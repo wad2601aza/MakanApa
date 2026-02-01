@@ -64,6 +64,27 @@ if ($action === 'get_offers') {
     exit;
 }
 
+
+/* =========================
+   GET HABITS (SELLER)
+========================= */
+if ($action === 'get_habits') {
+
+    $res = $conn->query("
+        SELECT avg_price, last_food, cheapest_count, total_orders
+        FROM user_habits
+        LIMIT 1
+    ");
+
+    if ($row = $res->fetch_assoc()) {
+        echo json_encode($row);
+    } else {
+        echo json_encode(null);
+    }
+    exit;
+}
+
+
 /* =========================
    SAVE HABIT
 ========================= */
@@ -105,22 +126,39 @@ if ($action === 'save_habit') {
 /* =========================
    GET HABITS
 ========================= */
-if ($action === 'get_habits') {
+if ($action === 'save_habit') {
 
-    $res = $conn->query(
-        "SELECT avg_price, last_food FROM user_habits LIMIT 1"
-    );
+    $price = (int) ($_POST['price'] ?? 0);
+    $food  = $_POST['food_name'] ?? '';
+    $is_cheapest = (int) ($_POST['is_cheapest'] ?? 0);
+
+    $res = $conn->query("SELECT * FROM user_habits LIMIT 1");
 
     if ($row = $res->fetch_assoc()) {
-        echo json_encode([
-            "avg_price" => (int)$row['avg_price'],
-            "last_food" => $row['last_food']
-        ]);
+
+        $newAvg = round(($row['avg_price'] * $row['total_orders'] + $price)
+                        / ($row['total_orders'] + 1));
+
+        $stmt = $conn->prepare("
+            UPDATE user_habits
+            SET avg_price=?,
+                last_food=?,
+                cheapest_count = cheapest_count + ?,
+                total_orders = total_orders + 1
+        ");
+        $stmt->bind_param("isii", $newAvg, $food, $is_cheapest);
+        $stmt->execute();
+
     } else {
-        echo json_encode([
-            "avg_price" => null,
-            "last_food" => null
-        ]);
+        $stmt = $conn->prepare("
+            INSERT INTO user_habits
+            (avg_price, last_food, cheapest_count, total_orders)
+            VALUES (?, ?, ?, 1)
+        ");
+        $stmt->bind_param("isi", $price, $food, $is_cheapest);
+        $stmt->execute();
     }
+
+    echo json_encode(["success" => true]);
     exit;
 }

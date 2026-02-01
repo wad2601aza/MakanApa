@@ -51,6 +51,7 @@
             }
         }
 
+        
         async function renderHabits() {
             try {
                 const res = await fetch(`${API_URL}?action=get_habits`);
@@ -61,14 +62,20 @@
                 const box = document.getElementById('habit-box');
                 const tags = document.getElementById('habit-tags');
 
-                if (!habits || (!habits.avg_price && !habits.last_food)) {
+                // No habit data → hide
+                if (
+                    !habits ||
+                    (!habits.avg_price && !habits.last_food && !habits.total_orders)
+                ) {
                     box.classList.add('hidden');
                     return;
                 }
 
+                // Show box
                 box.classList.remove('hidden');
                 tags.innerHTML = '';
 
+                // 💰 Average price habit
                 if (habits.avg_price) {
                     tags.innerHTML += `
                         <span class="bg-orange-500 text-white text-sm px-3 py-1 rounded-full font-bold">
@@ -77,19 +84,34 @@
                     `;
                 }
 
+                // 🍜 Last chosen food
                 if (habits.last_food) {
                     tags.innerHTML += `
-                        <span class="bg-white border border-orange-300 text-orange-700 text-sm px-3 py-1 rounded-full font-semibold">
-                            ${habits.last_food}
+                        <span class="bg-white border border-orange-300 text-orange-700
+                            text-sm px-3 py-1 rounded-full font-semibold">
+                            🍜 ${habits.last_food}
                         </span>
                     `;
                 }
+
+                // 🧠 Cheapest-lover habit
+                if (habits.total_orders && habits.cheapest_count !== null) {
+                    const pct = Math.round(
+                        (habits.cheapest_count / habits.total_orders) * 100
+                    );
+
+                    tags.innerHTML += `
+                        <span class="bg-white border border-orange-300
+                            text-orange-700 text-sm px-3 py-1 rounded-full font-semibold">
+                            🧠 Cheapest lover: ${pct}%
+                        </span>
+                    `;
+                }
+
             } catch (e) {
                 console.error("Habit load failed:", e.message);
             }
         }
-
-
 
 
         // 2. Poll for Offers (Buyer)
@@ -135,8 +157,15 @@
 
         // 3. Render Auction Cards (Buyer)
         function renderAuction(offers) {
+            const avg = userHabit?.avg_price
+                ? Number(userHabit.avg_price)
+                : null;
             const habits = userHabit || {};
-            const avg = habits.avg_price ? Number(habits.avg_price) : null;
+            const cheapestPrice = Math.min(...offers.map(o => Number(o.price)));
+            const cheapestBias =
+                userHabit && userHabit.total_orders
+                    ? userHabit.cheapest_count / userHabit.total_orders
+                    : 1; // default = cheapest lover
 
             function isLikely(price) {
                 if (!avg) return false;
@@ -173,10 +202,31 @@
 
             offers.forEach((offer, index) => {
                 const likely = isLikely(parseInt(offer.price));
-                const isBest = parseInt(offer.price) === cheapest;
-                const points = index === 0 ? 3 : (index === 1 ? 2 : 1);
-                const badgeColor = index === 0 ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50';
-                
+                const price = Number(offer.price);
+                const isBest = price === cheapestPrice;
+
+                // 🎯 POINT SYSTEM (HABIT-BASED)
+                let points = 1;
+
+                if (cheapestBias > 0.6) {
+                    // Buyer usually chooses cheapest
+                    if (price === cheapestPrice) {
+                        points = 10;
+                    } else {
+                        points = 1;
+                    }
+                } else {
+                    // Buyer flexible
+                    if (index === 0) points = 5;
+                    else if (index === 1) points = 3;
+                    else if (index === 2) points = 2;
+                }
+
+                const badgeColor =
+                    points >= 8
+                        ? 'text-green-600 bg-green-50'
+                        : 'text-orange-600 bg-orange-50';
+
                 const card = document.createElement('div');
                 card.className = `
                     auction-card p-3 rounded-xl flex justify-between items-center
@@ -198,6 +248,7 @@
 
                     <div class="text-[10px] ${badgeColor} inline-block px-1 rounded font-bold mt-1">
                     ⭐ Score: ${points} pts
+                    ${points >= 8 ? '🔥 BEST MATCH' : ''}
                     </div>
                 </div>
 
@@ -352,29 +403,25 @@
             });
     
 
-        function saveUserHabit(food, price) {
-            if (!USE_PHP_BACKEND) return;
+            function saveUserHabit(food, price, isCheapest) {
+                const fd = new FormData();
+                fd.append('action', 'save_habit');
+                fd.append('food_name', food);
+                fd.append('price', price);
+                fd.append('is_cheapest', isCheapest);
 
-            const fd = new FormData();
-            fd.append('action', 'save_habit');
-            fd.append('food_name', food);
-            fd.append('price', price);
+                fetch(API_URL, { method: 'POST', body: fd });
+            }
 
-            fetch(API_URL, {
-                method: 'POST',
-                body: fd
-            });
-        }
 
         // Modal Logic
         const modal = document.getElementById('contact-modal');
-        window.openContact = (seller, food, price, contact) => {
-            saveUserHabit(food, price);
+        window.openContact = (seller, food, price, contact, isCheapest) => {
+            saveUserHabit(food, price, isCheapest ? 1 : 0);
             setTimeout(() => {
                 loadUserHabit();
                 renderHabits();
             }, 300);
-
 
             // Normalize phone number
             contact = contact.replace(/\D/g, '');
