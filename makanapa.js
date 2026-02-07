@@ -16,6 +16,7 @@
 
         // UI Elements
         const savedSellerName = localStorage.getItem('seller_name');
+        const buyerName = document.getElementById('buyer-name').value;
         const buyerView = document.getElementById('buyer-view');
         const sellerView = document.getElementById('seller-view');
         const chatArea = document.getElementById('chat-area');
@@ -24,6 +25,65 @@
         const userInput = document.getElementById('user-input');
         
         // --- CORE LOGIC ---
+        async function chooseAddress() {
+            if (!navigator.geolocation) {
+                alert("Geolocation not supported");
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(async pos => {
+
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+
+                try {
+
+                    const res = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`
+                    );
+
+                    const data = await res.json();
+
+                    // ✅ FULL address like street, district, city, province, country
+                    const fullAddress = data.display_name;
+
+                    document.getElementById('order-address').value = fullAddress;
+
+                    localStorage.setItem('buyer_address', fullAddress);
+
+                    alert("Full address selected 📍");
+
+                } catch (err) {
+
+                    console.error(err);
+
+                    alert("Failed to get address");
+
+                }
+
+            }, () => {
+
+                alert("Location permission denied");
+
+            });
+        }
+
+
+        function openOrderModal() {
+            const saved = localStorage.getItem('buyer_address');
+
+            if (saved) {
+                document.getElementById('order-address').value = saved;
+            }
+
+            document.getElementById('order-modal').classList.add('show');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('order-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
 
         // 1. Send Request (Buyer)
         async function sendRequest(text) {
@@ -94,20 +154,6 @@
                     `;
                 }
 
-                // 🧠 Cheapest-lover habit
-                if (habits.total_orders && habits.cheapest_count !== null) {
-                    const pct = Math.round(
-                        (habits.cheapest_count / habits.total_orders) * 100
-                    );
-
-                    tags.innerHTML += `
-                        <span class="bg-white border border-orange-300
-                            text-orange-700 text-sm px-3 py-1 rounded-full font-semibold">
-                            🧠 Cheapest lover: ${pct}%
-                        </span>
-                    `;
-                }
-
             } catch (e) {
                 console.error("Habit load failed:", e.message);
             }
@@ -157,7 +203,7 @@
 
         // 3. Render Auction Cards (Buyer)
         function renderAuction(offers) {
-            const avg = userHabit?.avg_price
+            const avg = userHabit && userHabit.avg_price
                 ? Number(userHabit.avg_price)
                 : null;
             const habits = userHabit || {};
@@ -258,19 +304,19 @@
                     </div>
 
                     <button
-                    onclick="openContact(
+
+                    onclick="openOrder(
                         '${offer.seller_name}',
                         '${offer.food_name}',
                         '${offer.price}',
                         '${offer.contact}'
                     )"
-                    class="bg-orange-500 text-white text-xs px-3 py-1.5 rounded-lg mt-1 font-bold hover:bg-orange-600"
-                    >
-                    Contact
-                    </button>
+                    class="bg-orange-500 text-white text-xs px-3 py-1.5
+                        rounded-lg mt-1 font-bold hover:bg-orange-600">
+                    Choose
+                    </button>       
                 </div>
                 `;
-
 
                 list.appendChild(card);
             });
@@ -415,59 +461,122 @@
 
 
         // Modal Logic
-        const modal = document.getElementById('contact-modal');
-        window.openContact = (seller, food, price, contact, isCheapest) => {
-            saveUserHabit(food, price, isCheapest ? 1 : 0);
-            setTimeout(() => {
-                loadUserHabit();
-                renderHabits();
-            }, 300);
+        
+        window.openContact = (seller, food, price, contact) => {
 
-            // Normalize phone number
+            const modal = document.getElementById('order-modal');
+
+            if (!modal) {
+                console.error("Modal not found");
+                return;
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            // Fill info
+            document.getElementById('modal-seller-name').innerText = seller;
+            document.getElementById('modal-food-name').innerText = food;
+            document.getElementById('modal-price').innerText =
+                "Rp " + Number(price).toLocaleString();
+
+            // Load saved address
+            const savedAddress = localStorage.getItem('buyer_address');
+                if (savedAddress) {
+                    document.getElementById('order-address').value = savedAddress;
+                }
+
+            // Load saved name
+            const savedName = localStorage.getItem('buyer_name');
+                if (savedName) {
+                    document.getElementById('buyer-name').value = savedName;
+                }
+
+                // Save when changed
+                document.getElementById('buyer-name').onchange = e => {
+                    localStorage.setItem('buyer_name', e.target.value);
+                };
+
+
+            const qtyInput = document.getElementById('order-qty');
+            const totalBox = document.getElementById('order-total');
+
+            function updateTotal() {
+                const qty = Number(qtyInput.value) || 1;
+                const total = qty * Number(price);
+                totalBox.innerText = "Total: Rp " + total.toLocaleString();
+            }
+
+            updateTotal();
+            qtyInput.oninput = updateTotal;
+
+            document.getElementById('order-address').onchange = e => {
+                localStorage.setItem('buyer_address', e.target.value);
+            };
+
+            // Normalize phone
             contact = contact.replace(/\D/g, '');
-
             if (contact.startsWith('0')) {
                 contact = '62' + contact.slice(1);
             }
 
-            document.getElementById('modal-seller-name').innerText = seller;
-            document.getElementById('modal-food-name').innerText = food;
-            document.getElementById('modal-price').innerText =
-                "Rp " + parseInt(price).toLocaleString();
+            document.getElementById('whatsapp-link').onclick = () => {
 
-            const msg =
-                `Hi ${seller}, I want to order ${food} for Rp ${price}. Is it available?`;
+                const qty = qtyInput.value;
+                const address =
+                    document.getElementById('order-address').value;
 
-            const waLink =
-                `https://wa.me/${contact}?text=${encodeURIComponent(msg)}`;
+                const total = qty * Number(price);
 
-            const btn = document.getElementById('whatsapp-link');
-            btn.href = waLink;
-            btn.target = '_blank';
+                const msg = `
+        Hi ${seller},
+        I want to order:
 
-            modal.style.display = 'block';
+        Name: ${buyerName}
+        Food: ${food}
+        Quantity: ${qty}
+        Total: Rp ${total.toLocaleString()}
+        Address: ${address}
+                `;
+
+                const waLink =
+                    `https://wa.me/${contact}?text=${encodeURIComponent(msg)}`;
+
+                window.open(waLink, '_blank');
+                
             };
-        window.closeModal = () => modal.style.display = 'none';
-        window.onclick = (e) => { if (e.target == modal) closeModal(); }
+        };
 
-        // Role Switching
+
+
+
+        // Init
         roleBtn.onclick = () => {
+
             if (currentRole === 'buyer') {
+
                 currentRole = 'seller';
+
                 buyerView.classList.add('hidden');
                 sellerView.classList.remove('hidden');
+
                 roleBtn.innerText = "Switch to Buyer";
+
                 loadSellerRequests();
+
             } else {
+
                 currentRole = 'buyer';
+
                 sellerView.classList.add('hidden');
                 buyerView.classList.remove('hidden');
+
                 roleBtn.innerText = "Switch to Seller";
             }
         };
 
-        // Init
         loadUserHabit();
+        renderHabits();
 
         document.getElementById('send-btn').onclick = () => {
             const val = userInput.value;
