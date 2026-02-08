@@ -16,13 +16,14 @@
 
         // UI Elements
         const savedSellerName = localStorage.getItem('seller_name');
-        const buyerName = document.getElementById('buyer-name').value;
         const buyerView = document.getElementById('buyer-view');
         const sellerView = document.getElementById('seller-view');
         const chatArea = document.getElementById('chat-area');
         const sellerRequestsList = document.getElementById('seller-requests');
         const roleBtn = document.getElementById('toggle-role-btn');
         const userInput = document.getElementById('user-input');
+        const historyBtn = document.getElementById('history-btn');
+
         
         // --- CORE LOGIC ---
         async function chooseAddress() {
@@ -90,12 +91,18 @@
             addMessage(text, 'user');
             addMessage("Waiting for sellers to offer their best price... ⏳", 'bot');
             
+            const buyerName =
+                localStorage.getItem('buyer_name')
+                || document.getElementById('buyer-name')?.value
+                || "Anonymous";
             
             if (USE_PHP_BACKEND) {
                 try {
                     const formData = new FormData();
                     formData.append('action', 'create_request');
                     formData.append('description', text);
+                    formData.append('buyer_name', buyerName); 
+
                     const res = await fetch(API_URL, { method: 'POST', body: formData });
                     const data = await res.json();
                     currentRequestId = data.request_id;
@@ -459,10 +466,36 @@
                 fetch(API_URL, { method: 'POST', body: fd });
             }
 
+        
+        function openHistoryModal() {
+            const modal = document.getElementById('history-modal');
+
+            // show modal
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            // prevent background scroll
+            document.body.classList.add("overflow-hidden");
+
+            // load history
+            loadOrderHistory();
+        }
+
+        function closeHistoryModal() {
+            const modal = document.getElementById('history-modal');
+
+            // hide modal
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+
+            // allow background scroll again
+            document.body.classList.remove("overflow-hidden");
+        }
+
 
         // Modal Logic
         
-        window.openContact = (seller, food, price, contact) => {
+        function openOrder (seller, food, price, contact) {
 
             const modal = document.getElementById('order-modal');
 
@@ -520,32 +553,138 @@
                 contact = '62' + contact.slice(1);
             }
 
-            document.getElementById('whatsapp-link').onclick = () => {
+                document.getElementById('whatsapp-link').onclick = async () => {
+                    const qty = 
+                        Number(qtyInput.value);
 
-                const qty = qtyInput.value;
-                const address =
-                    document.getElementById('order-address').value;
+                    const address =
+                        document.getElementById('order-address').value;
 
-                const total = qty * Number(price);
+                    const buyerName =
+                        document.getElementById('buyer-name').value;
 
-                const msg = `
-        Hi ${seller},
-        I want to order:
+                    const total = qty * Number(price);
 
-        Name: ${buyerName}
-        Food: ${food}
-        Quantity: ${qty}
-        Total: Rp ${total.toLocaleString()}
-        Address: ${address}
-                `;
+                    const fd = new FormData();
+                        fd.append('action', 'create_order');
 
-                const waLink =
-                    `https://wa.me/${contact}?text=${encodeURIComponent(msg)}`;
+                        fd.append('request_id', currentRequestId);
 
-                window.open(waLink, '_blank');
-                
-            };
+                        fd.append('buyer_name', buyerName);
+                        fd.append('buyer_address', address);
+
+                        fd.append('seller_name', seller);
+                        fd.append('food_name', food);
+
+                        fd.append('price', price);
+                        fd.append('quantity', qty);
+                        fd.append('total', total);
+
+                        fd.append('contact', contact);
+
+                        await fetch(API_URL, {
+                            method: 'POST',
+                            body: fd
+                        });
+
+                    const msg = `
+                Hi ${seller},
+                I want to order:
+
+                Name: ${buyerName}
+                Food: ${food}
+                Quantity: ${qty}
+                Total: Rp ${total.toLocaleString()}
+                Address: ${address}
+                    `;
+
+                    const waLink =
+                        `https://wa.me/${contact}?text=${encodeURIComponent(msg)}`;
+
+                    window.open(waLink, '_blank');
+                };
         };
+
+
+        async function loadOrderHistory() {
+
+            const container =
+                document.getElementById('history-list');
+
+            container.innerHTML =
+                `<div class="text-gray-400 text-sm">
+                    Loading...
+                </div>`;
+
+            try {
+
+                const res =
+                    await fetch(`${API_URL}?action=get_orders`);
+
+                const orders =
+                    await res.json();
+
+                container.innerHTML = '';
+
+                if (!orders || orders.length === 0) {
+
+                    container.innerHTML =
+                        `<div class="text-gray-400 text-sm">
+                            No orders yet
+                        </div>`;
+
+                    return;
+                }
+
+                orders.forEach(order => {
+
+                    const div = document.createElement('div');
+
+                    div.className =
+                        "border p-3 rounded-lg mb-2 bg-white shadow-sm";
+
+                    div.innerHTML = `
+
+                        <div class="font-bold text-orange-600">
+                            ${order.food_name}
+                        </div>
+
+                        <div class="text-sm text-gray-600">
+                            Seller: ${order.seller_name}
+                        </div>
+
+                        <div class="text-sm text-gray-600">
+                            Buyer: ${order.buyer_name}
+                        </div>
+
+                        <div class="text-sm text-gray-600">
+                            Qty: ${order.quantity}
+                        </div>
+
+                        <div class="font-bold">
+                            Rp ${Number(order.total).toLocaleString()}
+                        </div>
+
+                        <div class="text-xs text-gray-400">
+                            ${new Date(order.created_at).toLocaleString()}
+                        </div>
+
+                    `;
+
+                    container.appendChild(div);
+
+                });
+
+            } catch (err) {
+
+                container.innerHTML =
+                    `<div class="text-red-500 text-sm">
+                        Failed to load orders
+                    </div>`;
+
+                console.error(err);
+            }
+        }
 
 
 
@@ -562,6 +701,8 @@
 
                 roleBtn.innerText = "Switch to Buyer";
 
+                historyBtn.classList.add('hidden');
+
                 loadSellerRequests();
 
             } else {
@@ -572,9 +713,12 @@
                 buyerView.classList.remove('hidden');
 
                 roleBtn.innerText = "Switch to Seller";
+
+                historyBtn.classList.remove('hidden');
             }
         };
 
+        loadOrderHistory();
         loadUserHabit();
         renderHabits();
 
@@ -584,4 +728,13 @@
         }
         userInput.onkeypress = (e) => { if(e.key === 'Enter') document.getElementById('send-btn').click(); }
         
-        addMessage("Welcome! Type what you want to eat, and sellers will bid for your order.", "bot");
+        addMessage("Tell me what you're craving and watch sellers compete to give you the best offer!", "bot");
+
+
+
+        window.openHistoryModal = openHistoryModal;
+        window.closeHistoryModal = closeHistoryModal;
+        window.openOrder = openOrder;
+        window.closeModal = closeModal;
+        window.chooseAddress = chooseAddress;
+

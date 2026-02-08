@@ -75,3 +75,45 @@ body {
     max-width: 400px;
     animation: fadeIn 0.3s;
 }
+
+/* modal background */
+#history-modal {
+    display: none;
+}
+
+/* show modal */
+#history-modal.active {
+    display: flex;
+}
+
+/* modal box */
+#history-modal > div {
+    height: 80vh;          /* fixed height so scroll can work */
+}
+
+/* scroll area */
+#history-list {
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+}
+
+/* optional: nicer scrollbar */
+#history-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+#history-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 10px;
+}
+
+#history-list::-webkit-scrollbar-thumb:hover {
+    background: #999;
+}
+
+/* prevent main page scroll when modal open */
+body.modal-open {
+    overflow: hidden;
+}
+

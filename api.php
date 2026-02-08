@@ -17,9 +17,22 @@ $conn->query("
    CREATE REQUEST
 ========================= */
 if ($action === 'create_request') {
-    $desc = $_POST['description'] ?? '';
-    $conn->query("INSERT INTO requests (description) VALUES ('$desc')");
-    echo json_encode(['request_id' => $conn->insert_id]);
+    $buyer = $_POST['buyer_name'] ?? '';
+    $desc  = $_POST['description'] ?? '';
+
+    $stmt = $conn->prepare("
+        INSERT INTO requests (buyer_name, description)
+        VALUES (?, ?)
+    ");
+
+    $stmt->bind_param("ss", $buyer, $desc);
+    $stmt->execute();
+
+    echo json_encode([
+        'request_id' => $conn->insert_id,
+        'buyer_name' => $buyer
+    ]);
+
     exit;
 }
 
@@ -28,7 +41,7 @@ if ($action === 'create_request') {
 ========================= */
 if ($action === 'get_requests') {
     $res = $conn->query("
-        SELECT id, description, created_at
+        SELECT id, buyer_name, description, created_at
         FROM requests
         ORDER BY created_at DESC
     ");
@@ -162,3 +175,71 @@ if ($action === 'save_habit') {
     echo json_encode(["success" => true]);
     exit;
 }
+
+/* =========================
+   CREATE ORDER (HISTORY)
+========================= */
+if ($action === 'create_order') {
+
+    $stmt = $conn->prepare("
+        INSERT INTO orders
+        (
+            request_id,
+            buyer_name,
+            buyer_address,
+            seller_name,
+            food_name,
+            price,
+            quantity,
+            total,
+            contact
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+
+    $stmt->bind_param(
+        "issssiiis",
+
+        $_POST['request_id'],
+        $_POST['buyer_name'],
+        $_POST['buyer_address'],
+
+        $_POST['seller_name'],
+        $_POST['food_name'],
+
+        $_POST['price'],
+        $_POST['quantity'],
+        $_POST['total'],
+
+        $_POST['contact']
+    );
+
+    $stmt->execute();
+
+    echo json_encode([
+        "success" => true,
+        "order_id" => $conn->insert_id
+    ]);
+
+    exit;
+}
+
+/* =========================
+   GET ORDER HISTORY
+========================= */
+if ($action === 'get_orders') {
+
+    $res = $conn->query("
+        SELECT *
+        FROM orders
+        ORDER BY created_at DESC
+        LIMIT 50
+    ");
+
+    echo json_encode(
+        $res->fetch_all(MYSQLI_ASSOC)
+    );
+
+    exit;
+}
+

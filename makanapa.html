@@ -14,11 +14,32 @@
         
         <!-- HEADER -->
         <header class="bg-orange-500 p-4 text-white flex justify-between items-center">
-            <h1 class="text-xl font-bold flex items-center gap-2"><span>😋</span> MakanApa?</h1>
-            <button id="toggle-role-btn" class="bg-white text-orange-600 px-3 py-1 rounded-full text-xs font-bold hover:bg-orange-50 shadow-sm">
-                Switch to Seller
-            </button>
+
+            <!-- Logo -->
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <span>😋</span> MakanApa?
+            </h1>
+
+            <!-- Right side -->
+            <div class="flex items-center gap-3">
+
+                <!-- Order History (secondary) -->
+                <button id="history-btn"
+                    onclick="openHistoryModal()"
+                    class="text-white text-xs font-semibold px-3 py-1 rounded-lg hover:bg-orange-600 transition">
+                    Order History
+                </button>
+
+                <!-- Switch to Seller (primary, unchanged) -->
+                <button id="toggle-role-btn"
+                    class="bg-white text-orange-600 px-3 py-1 rounded-full text-xs font-bold hover:bg-orange-50 shadow-sm">
+                    Switch to Seller
+                </button>
+
+            </div>
+
         </header>
+
 
         <!-- === BUYER VIEW === -->
         <div id="buyer-view" class="block">
@@ -127,9 +148,32 @@
         </div>
     </div>
 
+    <!-- ORDER HISTORY MODAL -->
+    <div id="history-modal"
+        class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+
+        <div class="bg-white w-full max-w-md rounded-2xl relative
+                    max-h-[80vh] flex flex-col">
+
+            <!-- HEADER -->
+            <div class="p-4 border-b font-bold text-lg">
+                Order History
+                <span class="absolute right-4 cursor-pointer"
+                    onclick="closeHistoryModal()">
+                    ✕
+                </span>
+            </div>
+
+            <!-- SCROLL AREA -->
+            <div id="history-list"
+                class="p-4 overflow-y-auto flex-1">
+            </div>
+
+        </div>
+
+    </div>
 
 
- 
 
     <script src="makanapa.js"></script>
 </body>
