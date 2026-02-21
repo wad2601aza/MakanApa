@@ -20,25 +20,64 @@
                 <span>😋</span> MakanApa?
             </h1>
 
-            <!-- Right side -->
-            <div class="flex items-center gap-3">
+                <!-- Right side -->
+                <div class="flex items-center gap-4">
 
-                <!-- Order History (secondary) -->
-                <button id="history-btn"
-                    onclick="openHistoryModal()"
-                    class="text-white text-xs font-semibold px-3 py-1 rounded-lg hover:bg-orange-600 transition">
-                    Order History
+                    <!-- BALANCE CARD -->
+                    <div id="balance-card">
+                        <div class="bg-white text-orange-600 px-3 py-1 rounded-xl shadow text-xs">
+                            <div class="font-bold">
+                                Balance: Rp <span id="user-balance">0</span>
+                            </div>
+                            <button onclick="openTopupModal()" 
+                                class="text-[10px] text-orange-500 hover:underline">
+                                + Top Up
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Order History -->
+                    <button id="history-btn"
+                        onclick="openHistoryModal()"
+                        class="relative z-50 text-white text-xs font-semibold px-3 py-1 rounded-lg hover:bg-orange-600 transition">
+                        History
+                    </button>
+
+                    <!-- Switch role -->
+                    <button id="toggle-role-btn"
+                        class="bg-white text-orange-600 px-3 py-1 rounded-full text-xs font-bold hover:bg-orange-50 shadow-sm">
+                        Switch
+                    </button>
+
+                </div>
+
+        </header>
+
+        <!-- TOP UP MODAL -->
+        <div id="topup-modal"
+            class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+
+            <div class="bg-white w-full max-w-sm p-6 rounded-2xl">
+
+                <h2 class="text-lg font-bold mb-3">Top Up Balance</h2>
+
+                <input type="number"
+                    id="topup-amount"
+                    placeholder="Enter amount"
+                    class="w-full p-2 border rounded mb-3">
+
+                <button onclick="submitTopup()"
+                    class="w-full bg-orange-600 text-white py-2 rounded font-bold">
+                    Top Up
                 </button>
 
-                <!-- Switch to Seller (primary, unchanged) -->
-                <button id="toggle-role-btn"
-                    class="bg-white text-orange-600 px-3 py-1 rounded-full text-xs font-bold hover:bg-orange-50 shadow-sm">
-                    Switch to Seller
+                <button onclick="closeTopupModal()"
+                    class="w-full mt-2 text-gray-500 text-sm">
+                    Cancel
                 </button>
 
             </div>
-
-        </header>
+        </div>
 
 
         <!-- === BUYER VIEW === -->
@@ -153,24 +192,32 @@
         class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
 
         <div class="bg-white w-full max-w-md rounded-2xl relative
-                    max-h-[80vh] flex flex-col">
+                    max-h-[80vh] flex flex-col shadow-xl">
 
             <!-- HEADER -->
-            <div class="p-4 border-b font-bold text-lg">
-                Order History
-                <span class="absolute right-4 cursor-pointer"
-                    onclick="closeHistoryModal()">
+            <div class="p-4 border-b flex justify-between items-center">
+                <div>
+                    <div class="font-bold text-lg">Transaction History</div>
+                    <div class="text-sm text-gray-500">
+                        Total Spend:
+                        <span id="total-spend" class="text-red-500 font-bold">
+                            Rp 0
+                        </span>
+                    </div>
+                </div>
+
+                <button onclick="closeHistoryModal()"
+                    class="text-gray-500 hover:text-black text-xl">
                     ✕
-                </span>
+                </button>
             </div>
 
-            <!-- SCROLL AREA -->
+            <!-- LIST -->
             <div id="history-list"
-                class="p-4 overflow-y-auto flex-1">
+                class="p-4 overflow-y-auto flex-1 space-y-3">
             </div>
 
         </div>
-
     </div>
 
 

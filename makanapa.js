@@ -23,6 +23,7 @@
         const roleBtn = document.getElementById('toggle-role-btn');
         const userInput = document.getElementById('user-input');
         const historyBtn = document.getElementById('history-btn');
+        const balanceCard = document.getElementById('balance-card');
 
         
         // --- CORE LOGIC ---
@@ -70,6 +71,25 @@
         }
 
 
+        async function submitTopup() {
+
+            const amount = document.getElementById("topup-amount").value;
+
+            const response = await fetch("api.php?action=set_balance", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: `user_id=1&amount=${amount}`
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                closeTopupModal();
+                await loadBalance(); // 🔥 INI WAJIB
+            } else {
+                alert(data.error);
+            }
+        }
         function openOrderModal() {
             const saved = localStorage.getItem('buyer_address');
 
@@ -118,6 +138,21 @@
             }
         }
 
+        async function loadBalance() {
+            try {
+                const response = await fetch("api.php?action=get_balance&user_id=1");
+                const data = await response.json();
+
+                console.log("Balance data:", data);
+
+                if (data && data.balance !== undefined) {
+                    document.getElementById("user-balance").innerText =
+                        parseInt(data.balance).toLocaleString("id-ID");
+                }
+            } catch (error) {
+                console.error("Failed load balance:", error);
+            }
+        }
         
         async function renderHabits() {
             try {
@@ -456,42 +491,30 @@
             });
     
 
-            function saveUserHabit(food, price, isCheapest) {
-                const fd = new FormData();
+         function saveUserHabit(food, price, isCheapest) {
+            const fd = new FormData();
                 fd.append('action', 'save_habit');
                 fd.append('food_name', food);
                 fd.append('price', price);
                 fd.append('is_cheapest', isCheapest);
 
-                fetch(API_URL, { method: 'POST', body: fd });
-            }
+            fetch(API_URL, { method: 'POST', body: fd });
+        }
 
         
         function openHistoryModal() {
-            const modal = document.getElementById('history-modal');
-
-            // show modal
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-
-            // prevent background scroll
-            document.body.classList.add("overflow-hidden");
-
-            // load history
-            loadOrderHistory();
+            const modal = document.getElementById("history-modal");
+            modal.classList.add("active"); // Matches your CSS #history-modal.active
+            document.body.classList.add("modal-open"); // Prevents background scroll
+            
+            loadOrderHistory(); 
         }
 
         function closeHistoryModal() {
-            const modal = document.getElementById('history-modal');
-
-            // hide modal
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-
-            // allow background scroll again
-            document.body.classList.remove("overflow-hidden");
+            const modal = document.getElementById("history-modal");
+            modal.classList.remove("active");
+            document.body.classList.remove("modal-open");
         }
-
 
         // Modal Logic
         
@@ -567,6 +590,7 @@
 
                     const fd = new FormData();
                         fd.append('action', 'create_order');
+                        fd.append('user_id', 1);
 
                         fd.append('request_id', currentRequestId);
 
@@ -607,87 +631,51 @@
 
 
         async function loadOrderHistory() {
-
-            const container =
-                document.getElementById('history-list');
-
-            container.innerHTML =
-                `<div class="text-gray-400 text-sm">
-                    Loading...
-                </div>`;
-
+            const list = document.getElementById("history-list");
+            const totalSpendEl = document.getElementById("total-spend");
+            
             try {
+                const res = await fetch(`${API_URL}?action=get_combined_history&user_id=1`);
+                const data = await res.json();
 
-                const res =
-                    await fetch(`${API_URL}?action=get_orders`);
+                let totalSpent = 0;
+                list.innerHTML = "";
 
-                const orders =
-                    await res.json();
+                data.forEach(item => {
+                    const isPayment = item.type === 'payment';
+                    
+                    // Only add to Total Spending if it's a 'payment' (order)
+                    if (isPayment) {
+                        totalSpent += parseInt(item.amount);
+                    }
 
-                container.innerHTML = '';
-
-                if (!orders || orders.length === 0) {
-
-                    container.innerHTML =
-                        `<div class="text-gray-400 text-sm">
-                            No orders yet
-                        </div>`;
-
-                    return;
-                }
-
-                orders.forEach(order => {
-
-                    const div = document.createElement('div');
-
-                    div.className =
-                        "border p-3 rounded-lg mb-2 bg-white shadow-sm";
-
-                    div.innerHTML = `
-
-                        <div class="font-bold text-orange-600">
-                            ${order.food_name}
+                    const card = document.createElement("div");
+                    card.className = "flex justify-between items-center p-4 border-b border-gray-50 bg-white mb-2 rounded-lg shadow-sm";
+                    card.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center ${isPayment ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600'}">
+                                <i class="fa-solid ${isPayment ? 'fa-utensils' : 'fa-wallet'}"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-sm text-gray-800">${item.title}</div>
+                                <div class="text-[10px] text-gray-500 uppercase">${item.details}</div>
+                            </div>
                         </div>
-
-                        <div class="text-sm text-gray-600">
-                            Seller: ${order.seller_name}
+                        <div class="font-bold ${isPayment ? 'text-red-500' : 'text-green-600'}">
+                            ${isPayment ? '-' : '+'}Rp ${parseInt(item.amount).toLocaleString()}
                         </div>
-
-                        <div class="text-sm text-gray-600">
-                            Buyer: ${order.buyer_name}
-                        </div>
-
-                        <div class="text-sm text-gray-600">
-                            Qty: ${order.quantity}
-                        </div>
-
-                        <div class="font-bold">
-                            Rp ${Number(order.total).toLocaleString()}
-                        </div>
-
-                        <div class="text-xs text-gray-400">
-                            ${new Date(order.created_at).toLocaleString()}
-                        </div>
-
                     `;
-
-                    container.appendChild(div);
-
+                    list.appendChild(card);
                 });
 
-            } catch (err) {
-
-                container.innerHTML =
-                    `<div class="text-red-500 text-sm">
-                        Failed to load orders
-                    </div>`;
-
-                console.error(err);
+                // Update the "Total Spend" text in the UI
+                if (totalSpendEl) {
+                    totalSpendEl.innerText = `Rp ${totalSpent.toLocaleString()}`;
+                }
+            } catch (e) {
+                console.error("History error:", e);
             }
         }
-
-
-
 
         // Init
         roleBtn.onclick = () => {
@@ -701,7 +689,9 @@
 
                 roleBtn.innerText = "Switch to Buyer";
 
-                historyBtn.classList.add('hidden');
+                // 🔥 Hide buyer-only UI
+                if (historyBtn) historyBtn.classList.add('hidden');
+                if (balanceCard) balanceCard.classList.add('hidden');
 
                 loadSellerRequests();
 
@@ -714,11 +704,32 @@
 
                 roleBtn.innerText = "Switch to Seller";
 
-                historyBtn.classList.remove('hidden');
+                // 🔥 Show buyer-only UI
+                if (historyBtn) historyBtn.classList.remove('hidden');
+                if (balanceCard) balanceCard.classList.remove('hidden');
             }
         };
+        
 
-        loadOrderHistory();
+        // ============================
+        // TOP UP MODAL FUNCTIONS
+        // ============================
+
+        function openTopupModal() {
+            const modal = document.getElementById("topup-modal");
+            modal.classList.remove("hidden");
+            modal.classList.add("flex");
+        }
+
+        function closeTopupModal() {
+            const modal = document.getElementById("topup-modal");
+            modal.classList.add("hidden");
+            modal.classList.remove("flex");
+        }
+
+        
+        
+        loadBalance();
         loadUserHabit();
         renderHabits();
 
@@ -737,4 +748,6 @@
         window.openOrder = openOrder;
         window.closeModal = closeModal;
         window.chooseAddress = chooseAddress;
+        window.openTopupModal = openTopupModal;
+        window.closeTopupModal = closeTopupModal;
 

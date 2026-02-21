@@ -1,245 +1,150 @@
 <?php
-ini_set('display_errors', 1);
+header("Content-Type: application/json");
+
+// Mencegah error teks muncul di layar agar tidak merusak format JSON
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 error_reporting(E_ALL);
+ini_set('display_errors', 0); 
 
-header('Content-Type: application/json');
+try {
+    $conn = new mysqli("localhost", "root", "", "makanapa");
+} catch (Exception $e) {
+    echo json_encode(["error" => "Database connection failed"]);
+    exit;
+}
 
-$conn = new mysqli("localhost", "root", "auxilia1407", "makanapa");
 $action = $_REQUEST['action'] ?? '';
 
 // 🔥 Auto-clean old requests (12 hours)
-$conn->query("
-    DELETE FROM requests
-    WHERE created_at < NOW() - INTERVAL 12 HOUR
-");
+$conn->query("DELETE FROM requests WHERE created_at < NOW() - INTERVAL 12 HOUR");
 
-/* =========================
-   CREATE REQUEST
-========================= */
-if ($action === 'create_request') {
-    $buyer = $_POST['buyer_name'] ?? '';
-    $desc  = $_POST['description'] ?? '';
+// Gunakan Switch Case untuk SEMUA action agar rapi
+switch ($action) {
 
-    $stmt = $conn->prepare("
-        INSERT INTO requests (buyer_name, description)
-        VALUES (?, ?)
-    ");
-
-    $stmt->bind_param("ss", $buyer, $desc);
-    $stmt->execute();
-
-    echo json_encode([
-        'request_id' => $conn->insert_id,
-        'buyer_name' => $buyer
-    ]);
-
-    exit;
-}
-
-/* =========================
-   GET REQUESTS (SELLER)
-========================= */
-if ($action === 'get_requests') {
-    $res = $conn->query("
-        SELECT id, buyer_name, description, created_at
-        FROM requests
-        ORDER BY created_at DESC
-    ");
-    echo json_encode($res->fetch_all(MYSQLI_ASSOC));
-    exit;
-}
-
-/* =========================
-   ADD OFFER
-========================= */
-if ($action === 'add_offer') {
-    $conn->query("
-        INSERT INTO offers (request_id, seller_name, food_name, price, contact)
-        VALUES (
-            '{$_POST['request_id']}',
-            '{$_POST['seller_name']}',
-            '{$_POST['food_name']}',
-            '{$_POST['price']}',
-            '{$_POST['contact']}'
-        )
-    ");
-    echo json_encode(['status' => 'ok']);
-    exit;
-}
-
-/* =========================
-   GET OFFERS (BUYER)
-========================= */
-if ($action === 'get_offers') {
-    $id = (int) $_GET['request_id'];
-    $res = $conn->query("SELECT * FROM offers WHERE request_id = $id");
-    echo json_encode($res->fetch_all(MYSQLI_ASSOC));
-    exit;
-}
-
-
-/* =========================
-   GET HABITS (SELLER)
-========================= */
-if ($action === 'get_habits') {
-
-    $res = $conn->query("
-        SELECT avg_price, last_food, cheapest_count, total_orders
-        FROM user_habits
-        LIMIT 1
-    ");
-
-    if ($row = $res->fetch_assoc()) {
-        echo json_encode($row);
-    } else {
-        echo json_encode(null);
-    }
-    exit;
-}
-
-
-/* =========================
-   SAVE HABIT
-========================= */
-if ($action === 'save_habit') {
-
-    $food  = $_POST['food_name'] ?? '';
-    $price = isset($_POST['price']) ? (int)$_POST['price'] : 0;
-
-    if (!$food || !$price) {
-        echo json_encode(["error" => "Missing data"]);
-        exit;
-    }
-
-    $res = $conn->query("SELECT * FROM user_habits LIMIT 1");
-
-    if ($row = $res->fetch_assoc()) {
-        $avg = $row['avg_price']
-            ? round(($row['avg_price'] * 2 + $price) / 3)
-            : $price;
-
-        $stmt = $conn->prepare(
-            "UPDATE user_habits SET avg_price=?, last_food=?"
-        );
-        $stmt->bind_param("is", $avg, $food);
+    case 'get_balance':
+        $user_id = intval($_GET['user_id'] ?? 1);
+        $stmt = $conn->prepare("SELECT balance FROM users WHERE id = ?");
+        $stmt->bind_param("i", $user_id);
         $stmt->execute();
-    } else {
-        $stmt = $conn->prepare(
-            "INSERT INTO user_habits (avg_price, last_food)
-             VALUES (?, ?)"
-        );
-        $stmt->bind_param("is", $price, $food);
+        $stmt->bind_result($balance);
+        $stmt->fetch();
+        echo json_encode(["balance" => $balance]);
+        break;
+
+    case 'get_user':
+        $user_id = intval($_GET['user_id'] ?? 1);
+        $result = $conn->query("SELECT * FROM users WHERE id = $user_id");
+        echo json_encode($result->fetch_assoc() ?: []);
+        break;
+
+    case 'create_request':
+        $buyer = $_POST['buyer_name'] ?? '';
+        $desc  = $_POST['description'] ?? '';
+        if (!$buyer || !$desc) {
+            echo json_encode(["error" => "Missing data"]);
+        } else {
+            $stmt = $conn->prepare("INSERT INTO requests (buyer_name, description) VALUES (?, ?)");
+            $stmt->bind_param("ss", $buyer, $desc);
+            $stmt->execute();
+            echo json_encode(["success" => true, "request_id" => $conn->insert_id]);
+        }
+        break;
+
+    case 'get_requests':
+        $res = $conn->query("SELECT * FROM requests ORDER BY created_at DESC");
+        echo json_encode($res->fetch_all(MYSQLI_ASSOC));
+        break;
+
+    case 'get_offers':
+        $request_id = intval($_GET['request_id'] ?? 0);
+        $stmt = $conn->prepare("SELECT * FROM offers WHERE request_id = ? ORDER BY created_at ASC");
+        $stmt->bind_param("i", $request_id);
         $stmt->execute();
-    }
+        echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        break;
 
-    echo json_encode(["success" => true]);
-    exit;
-}
-
-/* =========================
-   GET HABITS
-========================= */
-if ($action === 'save_habit') {
-
-    $price = (int) ($_POST['price'] ?? 0);
-    $food  = $_POST['food_name'] ?? '';
-    $is_cheapest = (int) ($_POST['is_cheapest'] ?? 0);
-
-    $res = $conn->query("SELECT * FROM user_habits LIMIT 1");
-
-    if ($row = $res->fetch_assoc()) {
-
-        $newAvg = round(($row['avg_price'] * $row['total_orders'] + $price)
-                        / ($row['total_orders'] + 1));
-
-        $stmt = $conn->prepare("
-            UPDATE user_habits
-            SET avg_price=?,
-                last_food=?,
-                cheapest_count = cheapest_count + ?,
-                total_orders = total_orders + 1
-        ");
-        $stmt->bind_param("isii", $newAvg, $food, $is_cheapest);
+    case 'add_offer':
+        $request_id  = intval($_POST['request_id'] ?? 0);
+        $seller_name = $_POST['seller_name'] ?? '';
+        $food_name   = $_POST['food_name'] ?? '';
+        $price       = intval($_POST['price'] ?? 0);
+        $contact     = $_POST['contact'] ?? '';
+        
+        $stmt = $conn->prepare("INSERT INTO offers (request_id, seller_name, food_name, price, contact) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("issis", $request_id, $seller_name, $food_name, $price, $contact);
         $stmt->execute();
+        echo json_encode(["success" => true]);
+        break;
 
-    } else {
-        $stmt = $conn->prepare("
-            INSERT INTO user_habits
-            (avg_price, last_food, cheapest_count, total_orders)
-            VALUES (?, ?, ?, 1)
-        ");
-        $stmt->bind_param("isi", $price, $food, $is_cheapest);
-        $stmt->execute();
-    }
+    case 'set_balance':
+        $user_id = intval($_POST['user_id'] ?? 1);
+        $amount  = intval($_POST['amount'] ?? 0);
+        
+        $conn->begin_transaction();
+        try {
+            $conn->query("UPDATE users SET balance = balance + $amount WHERE id = $user_id");
+            $stmt = $conn->prepare("INSERT INTO balance_history (user_id, type, amount, description) VALUES (?, 'topup', ?, 'Balance Top Up')");
+            $stmt->bind_param("ii", $user_id, $amount);
+            $stmt->execute();
+            $conn->commit();
+            echo json_encode(["success" => true]);
+        } catch (Exception $e) {
+            $conn->rollback();
+            echo json_encode(["error" => $e->getMessage()]);
+        }
+        break;
 
-    echo json_encode(["success" => true]);
-    exit;
+    case 'get_combined_history':
+        $user_id = intval($_GET['user_id'] ?? 1);
+        $sql = "
+            (SELECT 'topup' as type, description as title, 'Balance Added' as details, amount, 1 as qty, created_at as date 
+             FROM balance_history WHERE type = 'topup' AND user_id = $user_id)
+            UNION ALL
+            (SELECT 'payment' as type, food_name as title, seller_name as details, total as amount, quantity as qty, created_at as date 
+             FROM orders WHERE user_id = $user_id)
+            ORDER BY date DESC";
+        $result = $conn->query($sql);
+        echo json_encode($result->fetch_all(MYSQLI_ASSOC));
+        break;
+
+    case 'create_order':
+        $user_id = intval($_POST['user_id'] ?? 1);
+        $total = intval($_POST['total'] ?? 0);
+        
+        // Cek saldo dulu
+        $userRes = $conn->query("SELECT balance FROM users WHERE id = $user_id");
+        $user = $userRes->fetch_assoc();
+
+        if (!$user || $user['balance'] < $total) {
+            echo json_encode(['success' => false, 'error' => 'Saldo tidak cukup!']);
+            exit;
+        }
+
+        $conn->begin_transaction();
+        try {
+            // 1. Potong Saldo
+            $conn->query("UPDATE users SET balance = balance - $total WHERE id = $user_id");
+
+            // 2. Simpan Order
+            $stmt = $conn->prepare("INSERT INTO orders (user_id, request_id, buyer_name, buyer_address, seller_name, food_name, price, quantity, total, contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("iisssssiis", $user_id, $_POST['request_id'], $_POST['buyer_name'], $_POST['buyer_address'], $_POST['seller_name'], $_POST['food_name'], $_POST['price'], $_POST['quantity'], $total, $_POST['contact']);
+            $stmt->execute();
+            $order_id = $stmt->insert_id;
+
+            // 3. Catat History Pengeluaran (-)
+            $desc = "Payment for " . $_POST['food_name'];
+            $conn->query("INSERT INTO balance_history (user_id, type, amount, reference_id, description) VALUES ($user_id, 'payment', $total, $order_id, '$desc')");
+
+            $conn->commit();
+            echo json_encode(['success' => true]);
+        } catch (Exception $e) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        break;
+
+    default:
+        echo json_encode(["error" => "Invalid action: " . $action]);
+        break;
 }
-
-/* =========================
-   CREATE ORDER (HISTORY)
-========================= */
-if ($action === 'create_order') {
-
-    $stmt = $conn->prepare("
-        INSERT INTO orders
-        (
-            request_id,
-            buyer_name,
-            buyer_address,
-            seller_name,
-            food_name,
-            price,
-            quantity,
-            total,
-            contact
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ");
-
-    $stmt->bind_param(
-        "issssiiis",
-
-        $_POST['request_id'],
-        $_POST['buyer_name'],
-        $_POST['buyer_address'],
-
-        $_POST['seller_name'],
-        $_POST['food_name'],
-
-        $_POST['price'],
-        $_POST['quantity'],
-        $_POST['total'],
-
-        $_POST['contact']
-    );
-
-    $stmt->execute();
-
-    echo json_encode([
-        "success" => true,
-        "order_id" => $conn->insert_id
-    ]);
-
-    exit;
-}
-
-/* =========================
-   GET ORDER HISTORY
-========================= */
-if ($action === 'get_orders') {
-
-    $res = $conn->query("
-        SELECT *
-        FROM orders
-        ORDER BY created_at DESC
-        LIMIT 50
-    ");
-
-    echo json_encode(
-        $res->fetch_all(MYSQLI_ASSOC)
-    );
-
-    exit;
-}
-
+?>
