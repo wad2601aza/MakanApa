@@ -1,7 +1,7 @@
 <?php
 header("Content-Type: application/json");
 
-// Mencegah error teks muncul di layar agar tidak merusak format JSON
+// Prevent error text from appearing on screen to avoid breaking JSON format
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 error_reporting(E_ALL);
 ini_set('display_errors', 0); 
@@ -18,7 +18,7 @@ $action = $_REQUEST['action'] ?? '';
 // 🔥 Auto-clean old requests (12 hours)
 $conn->query("DELETE FROM requests WHERE created_at < NOW() - INTERVAL 12 HOUR");
 
-// Gunakan Switch Case untuk SEMUA action agar rapi
+// Use Switch Case for ALL actions for better organization
 switch ($action) {
 
     case 'get_balance':
@@ -70,10 +70,31 @@ switch ($action) {
         $price       = intval($_POST['price'] ?? 0);
         $contact     = $_POST['contact'] ?? '';
         
-        $stmt = $conn->prepare("INSERT INTO offers (request_id, seller_name, food_name, price, contact) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("issis", $request_id, $seller_name, $food_name, $price, $contact);
+        $media_url = null;
+
+        // --- HANDLE FILE UPLOAD ---
+        if (isset($_FILES['offer_media']) && $_FILES['offer_media']['error'] === 0) {
+            $target_dir = "uploads/";
+            
+            // Create folder if it doesn't exist
+            if (!is_dir($target_dir)) {
+                mkdir($target_dir, 0777, true);
+            }
+
+            $file_extension = pathinfo($_FILES["offer_media"]["name"], PATHINFO_EXTENSION);
+            $new_filename = uniqid() . "." . $file_extension;
+            $target_file = $target_dir . $new_filename;
+
+            if (move_uploaded_file($_FILES["offer_media"]["tmp_name"], $target_file)) {
+                $media_url = $target_file; 
+            }
+        }
+        
+        // Updated INSERT to include media_url
+        $stmt = $conn->prepare("INSERT INTO offers (request_id, seller_name, food_name, price, contact, media_url) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ississ", $request_id, $seller_name, $food_name, $price, $contact, $media_url);
         $stmt->execute();
-        echo json_encode(["success" => true]);
+        echo json_encode(["success" => true, "media" => $media_url]);
         break;
 
     case 'set_balance':
@@ -111,27 +132,27 @@ switch ($action) {
         $user_id = intval($_POST['user_id'] ?? 1);
         $total = intval($_POST['total'] ?? 0);
         
-        // Cek saldo dulu
+        // Check balance first
         $userRes = $conn->query("SELECT balance FROM users WHERE id = $user_id");
         $user = $userRes->fetch_assoc();
 
         if (!$user || $user['balance'] < $total) {
-            echo json_encode(['success' => false, 'error' => 'Saldo tidak cukup!']);
+            echo json_encode(['success' => false, 'error' => 'Insufficient balance!']);
             exit;
         }
 
         $conn->begin_transaction();
         try {
-            // 1. Potong Saldo
+            // 1. Deduct Balance
             $conn->query("UPDATE users SET balance = balance - $total WHERE id = $user_id");
 
-            // 2. Simpan Order
+            // 2. Save Order
             $stmt = $conn->prepare("INSERT INTO orders (user_id, request_id, buyer_name, buyer_address, seller_name, food_name, price, quantity, total, contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->bind_param("iisssssiis", $user_id, $_POST['request_id'], $_POST['buyer_name'], $_POST['buyer_address'], $_POST['seller_name'], $_POST['food_name'], $_POST['price'], $_POST['quantity'], $total, $_POST['contact']);
             $stmt->execute();
             $order_id = $stmt->insert_id;
 
-            // 3. Catat History Pengeluaran (-)
+            // 3. Record Spending History (-)
             $desc = "Payment for " . $_POST['food_name'];
             $conn->query("INSERT INTO balance_history (user_id, type, amount, reference_id, description) VALUES ($user_id, 'payment', $total, $order_id, '$desc')");
 

@@ -90,6 +90,23 @@
                 alert(data.error);
             }
         }
+
+        function autoCalculateTotal(text) {
+            // Mencari pola seperti "2x9k", "3x6000", "3 pcs 5k"
+            // Regex ini menangkap: [Jumlah] [x/pcs/spasi] [Harga]
+            const pattern = /(\d+)\s*(?:x|pcs|@)?\s*(\d+)\s*k/gi;
+            let total = 0;
+            let match;
+
+            while ((match = pattern.exec(text)) !== null) {
+                const qty = parseInt(match[1]);
+                const price = parseInt(match[2]) * 1000; // Mengubah 'k' jadi 1000
+                total += (qty * price);
+            }
+
+            return total;
+        }
+
         function openOrderModal() {
             const saved = localStorage.getItem('buyer_address');
 
@@ -245,40 +262,31 @@
 
         // 3. Render Auction Cards (Buyer)
         function renderAuction(offers) {
-            const avg = userHabit && userHabit.avg_price
-                ? Number(userHabit.avg_price)
-                : null;
+            const avg = userHabit && userHabit.avg_price ? Number(userHabit.avg_price) : null;
             const habits = userHabit || {};
             const cheapestPrice = Math.min(...offers.map(o => Number(o.price)));
-            const cheapestBias =
-                userHabit && userHabit.total_orders
+            
+            const cheapestBias = userHabit && userHabit.total_orders
                     ? userHabit.cheapest_count / userHabit.total_orders
-                    : 1; // default = cheapest lover
+                    : 1;
 
             function isLikely(price) {
                 if (!avg) return false;
                 return Math.abs(price - avg) <= avg * 0.2;
             }
 
-                // Smart sorting
-                offers.sort((a, b) => {
-                    if (!habits.avg_price) {
-                        return a.price - b.price;
-                    }
+            // Smart sorting
+            offers.sort((a, b) => {
+                if (!habits.avg_price) return a.price - b.price;
+                return Math.abs(a.price - habits.avg_price) - Math.abs(b.price - habits.avg_price);
+            });
 
-                    return Math.abs(a.price - habits.avg_price)
-                        - Math.abs(b.price - habits.avg_price);
-                });
-
-            const cheapest = Math.min(...offers.map(o => parseInt(o.price)));
-
-            // Create auction container ONCE
             if (!auctionContainer) {
                 auctionContainer = document.createElement('div');
                 auctionContainer.className = 'bot-msg message-bubble w-full';
                 auctionContainer.innerHTML = `
-                    <div class="font-bold text-orange-600 mb-2">
-                        🔥 LIVE OFFERS
+                    <div class="font-bold text-orange-600 mb-2 text-sm flex items-center gap-2">
+                        <span class="animate-pulse text-red-500">●</span> 🔥 LIVE OFFERS
                     </div>
                     <div id="auction-list" class="flex flex-col gap-2"></div>
                 `;
@@ -286,78 +294,73 @@
             }
 
             const list = auctionContainer.querySelector('#auction-list');
-            list.innerHTML = ''; // 🔥 CLEAR OLD OFFERS
+            list.innerHTML = ''; 
 
             offers.forEach((offer, index) => {
                 const likely = isLikely(parseInt(offer.price));
                 const price = Number(offer.price);
                 const isBest = price === cheapestPrice;
 
-                // 🎯 POINT SYSTEM (HABIT-BASED)
-                let points = 1;
-
-                if (cheapestBias > 0.6) {
-                    // Buyer usually chooses cheapest
-                    if (price === cheapestPrice) {
-                        points = 10;
+                // --- MEDIA LOGIC ---
+                let mediaHTML = '';
+                if (offer.media_url) {
+                    const isVideo = offer.media_url.match(/\.(mp4|webm|ogg)$/i);
+                    if (isVideo) {
+                        mediaHTML = `
+                            <video class="w-full h-32 object-cover rounded-lg mb-2 border border-gray-100" muted loop onmouseover="this.play()" onmouseout="this.pause()">
+                                <source src="${offer.media_url}" type="video/mp4">
+                            </video>`;
                     } else {
-                        points = 1;
+                        mediaHTML = `
+                            <img src="${offer.media_url}" 
+                                class="w-full h-32 object-cover rounded-lg mb-2 border border-gray-100" 
+                                alt="${offer.food_name}"
+                                onclick="window.open('${offer.media_url}', '_blank')">`;
                     }
+                }
+
+                // --- POINT SYSTEM ---
+                let points = 1;
+                if (cheapestBias > 0.6) {
+                    points = (price === cheapestPrice) ? 10 : 1;
                 } else {
-                    // Buyer flexible
                     if (index === 0) points = 5;
                     else if (index === 1) points = 3;
                     else if (index === 2) points = 2;
                 }
 
-                const badgeColor =
-                    points >= 8
-                        ? 'text-green-600 bg-green-50'
-                        : 'text-orange-600 bg-orange-50';
+                const badgeColor = points >= 8 ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50';
 
                 const card = document.createElement('div');
                 card.className = `
-                    auction-card p-3 rounded-xl flex justify-between items-center
-                    ${isBest ? 'border-2 border-green-500 bg-green-50' : ''}
-                    ${likely ? 'border-2 border-orange-500 bg-orange-100' : ''}
+                    auction-card p-3 rounded-xl flex flex-col gap-1 transition-all
+                    ${isBest ? 'border-2 border-green-500 bg-green-50 shadow-sm' : 'border border-gray-100 bg-white'}
+                    ${likely ? 'ring-2 ring-orange-400 ring-inset' : ''}
                 `;
 
                 card.innerHTML = `
-                <div>
-                    <div class="text-[10px] text-gray-500 font-bold uppercase">
-                    ${offer.seller_name}
+                    ${mediaHTML} <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="text-[9px] text-gray-400 font-bold uppercase tracking-wider">${offer.seller_name}</div>
+                            <div class="font-bold text-gray-800 text-sm flex flex-wrap items-center gap-1">
+                                ${offer.food_name}
+                                ${isBest ? '<span class="bg-green-100 text-green-700 text-[8px] px-1.5 rounded">BEST PRICE</span>' : ''}
+                            </div>
+                            <div class="text-[9px] ${badgeColor} inline-block px-1 rounded font-bold mt-1">
+                                ⭐ ${points} pts ${points >= 8 ? '• TARGET MATCH' : ''}
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm font-bold text-orange-600">
+                                Rp ${parseInt(offer.price).toLocaleString()}
+                            </div>
+                            <button
+                                onclick="openOrder('${offer.seller_name}', '${offer.food_name}', '${offer.price}', '${offer.contact}')"
+                                class="bg-orange-500 text-white text-[10px] px-4 py-1.5 rounded-lg mt-1 font-bold hover:bg-orange-600 active:scale-95 transition-transform shadow-sm">
+                                CHOOSE
+                            </button>
+                        </div>
                     </div>
-
-                    <div class="font-bold text-gray-800 flex items-center gap-2">
-                    ${offer.food_name}
-                    ${isBest ? '<span class="text-green-600 text-xs font-bold">🏆 BEST PRICE</span>' : ''}
-                    ${likely ? '<span class="text-orange-600 text-xs font-bold">⭐ RECOMMENDED</span>' : ''}
-                    </div>
-
-                    <div class="text-[10px] ${badgeColor} inline-block px-1 rounded font-bold mt-1">
-                    ⭐ Score: ${points} pts
-                    ${points >= 8 ? '🔥 BEST MATCH' : ''}
-                    </div>
-                </div>
-
-                <div class="text-right">
-                    <div class="text-lg font-bold text-orange-600">
-                    Rp ${parseInt(offer.price).toLocaleString()}
-                    </div>
-
-                    <button
-
-                    onclick="openOrder(
-                        '${offer.seller_name}',
-                        '${offer.food_name}',
-                        '${offer.price}',
-                        '${offer.contact}'
-                    )"
-                    class="bg-orange-500 text-white text-xs px-3 py-1.5
-                        rounded-lg mt-1 font-bold hover:bg-orange-600">
-                    Choose
-                    </button>       
-                </div>
                 `;
 
                 list.appendChild(card);
@@ -366,97 +369,128 @@
             chatArea.scrollTop = chatArea.scrollHeight;
         }
 
-
         // 4. Load Requests (Seller)
         async function loadSellerRequests() {
             let requests = [];
+            const savedSellerName = localStorage.getItem('seller_name') || '';
+
             if (USE_PHP_BACKEND) {
                 try {
                     const res = await fetch(`${API_URL}?action=get_requests`);
                     requests = await res.json();
-                } catch(e) {}
+                } catch(e) {
+                    console.error("Error load data:", e);
+                }
             } else {
+                // Ambil dari mock_requests (pastikan buyer sudah submit sesuatu)
                 requests = JSON.parse(localStorage.getItem('mock_requests') || '[]');
-                // Filter out requests that already have offers (optional logic)
             }
 
+            
+            const sellerRequestsList = document.getElementById('seller-requests'); 
+            
+            if (!sellerRequestsList) return;
+
             sellerRequestsList.innerHTML = '';
+
             if (requests.length === 0) {
-                sellerRequestsList.innerHTML = '<div class="text-center text-gray-400 mt-10">No active requests</div>';
+                sellerRequestsList.innerHTML = '<div class="text-center text-gray-400 mt-10 italic">No active requests yet...</div>';
                 return;
             }
 
-            requests.forEach(req => {
+           requests.forEach(req => {
                 const card = document.createElement('div');
-                card.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100';
+                card.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-2';
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-3">
                         <div>
                             <span class="bg-blue-100 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">NEW REQUEST</span>
                             <p class="font-bold text-gray-800 text-lg mt-1">"${req.description}"</p>
                         </div>
-                        <div class="text-xs text-gray-400">${new Date(req.created_at).toLocaleTimeString()}</div>
                     </div>
                     
-                    <!-- Offer Form -->
                     <div class="bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm">
-                        <input type="text" id="offer-name-${req.id}" placeholder="Dish Name (e.g. Nasi Goreng Hijau)" class="w-full mb-2 p-2 rounded border focus:border-orange-500 outline-none">
-                        <input type="text" id="offer-seller-${req.id}" value="${savedSellerName || ''}" placeholder="Your Shop Name (e.g. Warunk Mak Siti)"  class="w-full mb-2 p-2 rounded border"/>
+                        <input type="text" id="offer-name-${req.id}" 
+                            placeholder="Ex: Fruit tea 2x10k, Hot tea 1x5k" 
+                            oninput="handleAutoPrice(${req.id})"
+                            class="w-full mb-2 p-2 rounded border outline-none focus:border-orange-500">
+                        
+                        <input type="text" id="offer-seller-${req.id}" value="${savedSellerName}" placeholder="Shop Name" class="w-full mb-2 p-2 rounded border focus:border-orange-500"/>
+                        
                         <div class="flex gap-2 mb-2">
-                            <input type="number" id="offer-price-${req.id}" placeholder="Price (Rp)" class="w-1/2 p-2 rounded border focus:border-orange-500 outline-none">
-                            <input type="text" id="offer-contact-${req.id}" placeholder="WhatsApp (e.g. 62812...)" class="w-1/2 p-2 rounded border focus:border-orange-500 outline-none">
+                            <input type="number" id="offer-price-${req.id}" placeholder="Total Price (Rp)" class="w-1/2 p-2 rounded border border-orange-300 bg-orange-50 font-bold">
+                            <input type="text" id="offer-contact-${req.id}" placeholder="WhatsApp" class="w-1/2 p-2 rounded border focus:border-orange-500">
                         </div>
-                        <button onclick="submitOffer(${req.id})" class="w-full bg-orange-500 text-white font-bold py-2 rounded hover:bg-orange-600 transition">
+
+                        <div class="mb-3">
+                            <input type="file" id="offer-media-${req.id}" accept="image/*,video/*" class="w-full text-xs text-gray-500">
+                        </div>
+
+                        <button onclick="submitOffer(${req.id})" class="w-full bg-orange-500 text-white font-bold py-2 rounded hover:bg-orange-600">
                             Submit Offer
                         </button>
                     </div>
                 `;
                 sellerRequestsList.appendChild(card);
             });
+
+            // Fungsi untuk menangani input real-time
+            window.handleAutoPrice = function(reqId) {
+                const nameInput = document.getElementById(`offer-name-${reqId}`).value;
+                const priceInput = document.getElementById(`offer-price-${reqId}`);
+                
+                const calculatedTotal = autoCalculateTotal(nameInput);
+                
+                // Hanya update jika ada angka yang ditemukan
+                if (calculatedTotal > 0) {
+                    priceInput.value = calculatedTotal;
+                    // Beri efek highlight sedikit agar seller sadar harganya berubah
+                    priceInput.classList.add('ring-2', 'ring-orange-500');
+                }
+            }
         }
 
         // 5. Submit Offer (Seller)
         async function submitOffer(reqId) {
-            const foodName =
-                document.getElementById(`offer-name-${reqId}`).value;
-            const price =
-                document.getElementById(`offer-price-${reqId}`).value;
-            const contact =
-                document.getElementById(`offer-contact-${reqId}`).value;
-            const sellerName =
-                document.getElementById(`offer-seller-${reqId}`).value;
+            const foodName = document.getElementById(`offer-name-${reqId}`).value;
+            const price = document.getElementById(`offer-price-${reqId}`).value;
+            const contact = document.getElementById(`offer-contact-${reqId}`).value;
+            const sellerName = document.getElementById(`offer-seller-${reqId}`).value;
+            const mediaFile = document.getElementById(`offer-media-${reqId}`).files[0];
 
-            // 1️⃣ Validate first
-            if (!sellerName) return alert("Please enter your shop name");
-            if (!foodName || !price || !contact)
-                return alert("Please fill all fields");
+            if (!sellerName || !foodName || !price || !contact) {
+                return alert("Please fill all fields!");
+            }
 
-            // 2️⃣ Save seller name AFTER validation ✅
             localStorage.setItem('seller_name', sellerName);
 
-            const offerData = {
-                request_id: reqId,
-                seller_name: sellerName,
-                food_name: foodName,
-                price: price,
-                contact: contact
-            };
+            const formData = new FormData();
+            formData.append('action', 'add_offer');
+            formData.append('request_id', reqId);
+            formData.append('seller_name', sellerName);
+            formData.append('food_name', foodName);
+            formData.append('price', price);
+            formData.append('contact', contact);
+            if (mediaFile) {
+                formData.append('offer_media', mediaFile);
+            }
 
             if (USE_PHP_BACKEND) {
-                const formData = new FormData();
-                formData.append('action', 'add_offer');
-                for (const key in offerData) {
-                    formData.append(key, offerData[key]);
-                }
                 await fetch(API_URL, { method: 'POST', body: formData });
             } else {
-                const offers =
-                    JSON.parse(localStorage.getItem('mock_offers') || '[]');
-                offers.push({ ...offerData, requestId: reqId });
+                // Simulasi LocalStorage
+                const offers = JSON.parse(localStorage.getItem('mock_offers') || '[]');
+                offers.push({ 
+                    requestId: reqId, 
+                    food_name: foodName, 
+                    price: price, 
+                    seller_name: sellerName,
+                    hasImage: !!mediaFile 
+                });
                 localStorage.setItem('mock_offers', JSON.stringify(offers));
             }
 
-            alert("Offer sent to customer!");
+            alert("Offer submitted!");
             loadSellerRequests();
         }
 
@@ -577,55 +611,45 @@
             }
 
                 document.getElementById('whatsapp-link').onclick = async () => {
-                    const qty = 
-                        Number(qtyInput.value);
-
-                    const address =
-                        document.getElementById('order-address').value;
-
-                    const buyerName =
-                        document.getElementById('buyer-name').value;
-
+                    const qty = Number(qtyInput.value);
+                    const address = document.getElementById('order-address').value;
+                    const buyerName = document.getElementById('buyer-name').value;
                     const total = qty * Number(price);
 
                     const fd = new FormData();
-                        fd.append('action', 'create_order');
-                        fd.append('user_id', 1);
+                    fd.append('action', 'create_order');
+                    fd.append('user_id', 1);
+                    fd.append('request_id', currentRequestId);
+                    fd.append('buyer_name', buyerName);
+                    fd.append('buyer_address', address);
+                    fd.append('seller_name', seller);
+                    fd.append('food_name', food);
+                    fd.append('price', price);
+                    fd.append('quantity', qty);
+                    fd.append('total', total);
+                    fd.append('contact', contact);
 
-                        fd.append('request_id', currentRequestId);
+                    // 1. send data to API
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        body: fd
+                    });
+                    
+                    const result = await response.json();
 
-                        fd.append('buyer_name', buyerName);
-                        fd.append('buyer_address', address);
-
-                        fd.append('seller_name', seller);
-                        fd.append('food_name', food);
-
-                        fd.append('price', price);
-                        fd.append('quantity', qty);
-                        fd.append('total', total);
-
-                        fd.append('contact', contact);
-
-                        await fetch(API_URL, {
-                            method: 'POST',
-                            body: fd
-                        });
-
-                    const msg = `
-                Hi ${seller},
-                I want to order:
-
-                Name: ${buyerName}
-                Food: ${food}
-                Quantity: ${qty}
-                Total: Rp ${total.toLocaleString()}
-                Address: ${address}
-                    `;
-
-                    const waLink =
-                        `https://wa.me/${contact}?text=${encodeURIComponent(msg)}`;
-
-                    window.open(waLink, '_blank');
+                    if (result.success) {
+                        await loadBalance(); 
+                        
+                        // 2. prepare WA chat
+                        const msg = `Hi ${seller}, I want to order...`; // (lanjutkan pesanmu)
+                        const waLink = `https://wa.me/${contact}?text=${encodeURIComponent(msg)}`;
+                        
+                        // 3. closr modal and open WA
+                        closeModal();
+                        window.open(waLink, '_blank');
+                    } else {
+                        alert("Gagal order: " + result.error);
+                    }
                 };
         };
 
