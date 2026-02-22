@@ -467,18 +467,22 @@
                 try {
                     const res = await fetch(`${API_URL}?action=get_requests`);
                     requests = await res.json();
-                } catch(e) {
+                } catch (e) {
                     console.error("Error load data:", e);
                 }
             } else {
-                // Ambil dari mock_requests (pastikan buyer sudah submit sesuatu)
                 requests = JSON.parse(localStorage.getItem('mock_requests') || '[]');
             }
 
-            
             const sellerRequestsList = document.getElementById('seller-requests'); 
             
             if (!sellerRequestsList) return;
+
+            // CEK FOCUS: Tambahan pengaman agar tidak reset saat kamu sedang mengetik
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.tagName === 'INPUT') && sellerRequestsList.contains(activeEl)) {
+                return; 
+            }
 
             sellerRequestsList.innerHTML = '';
 
@@ -489,33 +493,34 @@
 
             requests.forEach(req => {
                 const card = document.createElement('div');
-                card.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-2';
+                // Theme: Border biru muda
+                card.className = 'bg-white p-4 rounded-xl shadow-sm border border-blue-100 mb-2';
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-3">
                         <div>
-                            <span class="bg-blue-100 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">NEW REQUEST</span>
+                            <span class="bg-blue-100 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">NEW REQUEST</span>
                             <p class="font-bold text-gray-800 text-lg mt-1">"${req.description}"</p>
                         </div>
                     </div>
                     
-                    <div class="bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm">
+                    <div class="bg-slate-50 p-3 rounded-lg border border-blue-50 text-sm">
                         <input type="text" id="offer-name-${req.id}" 
                             placeholder="Ex: Fruit tea 2x10k, Hot tea 1x5k" 
                             oninput="handleAutoPrice(${req.id})"
-                            class="w-full mb-2 p-2 rounded border outline-none focus:border-orange-500">
+                            class="w-full mb-2 p-2 rounded border outline-none focus:border-blue-500">
                         
-                        <input type="text" id="offer-seller-${req.id}" value="${savedSellerName}" placeholder="Shop Name" class="w-full mb-2 p-2 rounded border focus:border-orange-500"/>
+                        <input type="text" id="offer-seller-${req.id}" value="${savedSellerName}" placeholder="Shop Name" class="w-full mb-2 p-2 rounded border focus:border-blue-500"/>
                         
                         <div class="flex gap-2 mb-2">
-                            <input type="number" id="offer-price-${req.id}" placeholder="Total Price (Rp)" class="w-1/2 p-2 rounded border border-orange-300 bg-orange-50 font-bold">
-                            <input type="text" id="offer-contact-${req.id}" placeholder="WhatsApp" class="w-1/2 p-2 rounded border focus:border-orange-500">
+                            <input type="number" id="offer-price-${req.id}" placeholder="Total Price (Rp)" class="w-1/2 p-2 rounded border border-blue-200 bg-blue-50 font-bold text-blue-700">
+                            <input type="text" id="offer-contact-${req.id}" placeholder="WhatsApp" class="w-1/2 p-2 rounded border focus:border-blue-500">
                         </div>
 
                         <div class="mb-3">
                             <input type="file" id="offer-media-${req.id}" accept="image/*,video/*" class="w-full text-xs text-gray-500">
                         </div>
 
-                        <button onclick="submitOffer(${req.id})" class="w-full bg-orange-500 text-white font-bold py-2 rounded hover:bg-orange-600">
+                        <button onclick="submitOffer(${req.id})" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
                             Submit Offer
                         </button>
                     </div>
@@ -523,20 +528,18 @@
                 sellerRequestsList.appendChild(card);
             });
 
-            // Fungsi untuk menangani input real-time
+            // FUNGSI HANDLE AUTO PRICE (Tetap sama persis fungsinya)
             window.handleAutoPrice = function(reqId) {
                 const nameInput = document.getElementById(`offer-name-${reqId}`).value;
                 const priceInput = document.getElementById(`offer-price-${reqId}`);
                 
-                // Coba hitung pakai rumus matematika sederhana (Regex) dulu
                 const total = autoCalculateTotal(nameInput);
                 
                 if (total > 0) {
-                    // JIKA BERHASIL: Langsung isi kotak harga
                     priceInput.value = total;
-                    priceInput.style.backgroundColor = "#fff7ed"; // Beri warna orange muda sebagai tanda sukses
+                    priceInput.style.backgroundColor = "#eff6ff"; // Biru sangat muda (blue-50)
+                    priceInput.style.color = "#1d4ed8"; // Biru Bold (blue-700)
                 } else if (nameInput.length > 10) {
-                    // JIKA RUMIT: Tanya AI Gemini (dengan jeda 1 detik agar tidak boros kuota)
                     clearTimeout(window.aiTimer);
                     window.aiTimer = setTimeout(() => {
                         fetchAIPrice(nameInput, priceInput);
@@ -752,7 +755,21 @@
                         await loadBalance(); 
                         
                         // 2. prepare WA chat
-                        const msg = `Hi ${seller}, I want to order...`; // (lanjutkan pesanmu)
+                         const msg = `
+Hi ${seller} 
+
+I would like to place an order:
+
+Food: ${food}
+Quantity: ${qty}
+Price per item: Rp ${Number(price).toLocaleString()}
+Total: Rp ${total.toLocaleString()}
+
+Name: ${buyerName}
+Address: ${address}
+
+Please confirm the order. Thank you 
+`;
                         const waLink = `https://wa.me/${contact}?text=${encodeURIComponent(msg)}`;
                         
                         // 3. closr modal and open WA
@@ -868,39 +885,28 @@
         loadUserHabit();
         renderHabits();
 
+
         document.addEventListener('DOMContentLoaded', () => {
             // --- 1. BUYER INITIALIZATION ---
             const userInputEl = document.getElementById('user-input');
             const sendBtn = document.getElementById('send-btn');
             const chatAreaEl = document.getElementById('chat-area');
 
-            // Only run if we are on the Buyer Page
             if (userInputEl && sendBtn) {
                 let isProcessing = false;
-
                 const handleSend = (e) => {
                     if (e) e.preventDefault();
                     if (isProcessing) return;
-
                     const val = userInputEl.value.trim();
                     if (!val) return;
-
                     isProcessing = true;
                     userInputEl.value = '';
-
                     addMessage(val, "user");
-
-                    if (typeof sendRequest === 'function') {
-                        sendRequest(val);
-                    }
-
+                    if (typeof sendRequest === 'function') sendRequest(val);
                     setTimeout(() => { isProcessing = false; }, 500);
                 };
-
                 sendBtn.onclick = handleSend;
-                userInputEl.onkeydown = (e) => {
-                    if (e.key === 'Enter') handleSend(e);
-                };
+                userInputEl.onkeydown = (e) => { if (e.key === 'Enter') handleSend(e); };
 
                 if (chatAreaEl && chatAreaEl.innerHTML.trim() === "") {
                     setTimeout(() => {
@@ -911,18 +917,14 @@
 
             // --- 2. SELLER INITIALIZATION ---
             const sellerRequestsList = document.getElementById('seller-requests');
-            
-            // Only run if we are on the Seller Page
             if (sellerRequestsList) {
-                console.log("Seller Dashboard Active: Starting request engine...");
-                
-                // Load immediately on page open
+                // Load once immediately
                 loadSellerRequests();
 
-                // Start polling: Check for new Buyer requests every 3 seconds
+                // Auto-refresh every 5 seconds, BUT the Focus Guard above will protect your typing
                 setInterval(() => {
                     loadSellerRequests();
-                }, 3000);
+                }, 5000); 
             }
         });
 
@@ -934,3 +936,4 @@
         window.openTopupModal = openTopupModal;
         window.closeTopupModal = closeTopupModal;
 
+                // Start polling: Check for new Buyer requests every 3 seconds
