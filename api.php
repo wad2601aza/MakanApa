@@ -168,4 +168,50 @@ switch ($action) {
         echo json_encode(["error" => "Invalid action: " . $action]);
         break;
 }
+
+
+// ai for api key
+if ($_GET['action'] == 'ask_ai') {
+    // Get the JSON input from the JavaScript fetch request
+    $input = json_decode(file_get_contents('php://input'), true);
+    $text = $input['text'] ?? '';
+    
+    if (empty($text)) {
+        echo json_encode(['total_price' => 0]);
+        exit;
+    }
+
+    $apiKey = "AIzaSyC2jrP6grRh7gFOnE8o7UZuhM6k4Zacf7E";
+    $apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" . $apiKey;
+
+    // The "Prompt" tells the AI exactly how to behave
+    $prompt = "You are a price extractor. Analyze this food order: '$text'. 
+               Calculate the total price. 
+               Return ONLY a JSON object: {\"total_price\": 12345}. 
+               If unclear, return {\"total_price\": 0}.";
+
+    $payload = [
+        "contents" => [["parts" => [["text" => $prompt]]]]
+    ];
+
+    // Standard PHP cURL to call Google's Servers
+    $ch = curl_init($apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    
+    $response = curl_exec($ch);
+    $result = json_decode($response, true);
+    
+    // Extract the text part of the AI response
+    $aiText = $result['candidates'][0]['content']['parts'][0]['text'] ?? '{"total_price": 0}';
+    
+    // Clean any markdown formatting (like ```json) if the AI includes it
+    $cleanJson = trim(str_replace(['```json', '```'], '', $aiText));
+    
+    header('Content-Type: application/json');
+    echo $cleanJson;
+    exit;
+}
 ?>

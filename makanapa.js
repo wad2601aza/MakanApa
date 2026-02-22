@@ -91,20 +91,108 @@
             }
         }
 
+
+        // Function to handle the automatic input
+        async function syncPrice(requestId) {
+            const description = document.getElementById(`offer-name-${requestId}`).value;
+            const priceField = document.getElementById(`offer-price-${requestId}`);
+
+            // 1. Try immediate math (Regex)
+            let total = autoCalculateTotal(description);
+
+            if (total > 0) {
+                // AUTOMATIC INPUT HAPPENS HERE
+                priceField.value = total; 
+            } else if (description.length > 10) {
+                // 2. If math fails, call your Gemini API
+                const aiPrice = await callGeminiAPI(description);
+                if (aiPrice > 0) {
+                    // AUTOMATIC INPUT FROM AI HAPPENS HERE
+                    priceField.value = aiPrice;
+                }
+            }
+        }
+
         function autoCalculateTotal(text) {
-            // Mencari pola seperti "2x9k", "3x6000", "3 pcs 5k"
-            // Regex ini menangkap: [Jumlah] [x/pcs/spasi] [Harga]
-            const pattern = /(\d+)\s*(?:x|pcs|@)?\s*(\d+)\s*k/gi;
+            const pattern = /(\d+)\s*(?:x|[a-zA-Z\s]+)\s*(\d+)([kK]?)/g;
             let total = 0;
             let match;
 
             while ((match = pattern.exec(text)) !== null) {
-                const qty = parseInt(match[1]);
-                const price = parseInt(match[2]) * 1000; // Mengubah 'k' jadi 1000
+                let qty = parseInt(match[1]);
+                let price = parseInt(match[2]);
+                let isKilo = match[3].toLowerCase() === 'k';
+
+                if (isKilo) price *= 1000;
                 total += (qty * price);
             }
-
             return total;
+        }
+
+        async function fetchAIPrice(text, targetInput) {
+            targetInput.placeholder = "Calculating... ✨";
+            try {
+                const res = await fetch('api.php?action=ask_ai', {
+                    method: 'POST',
+                    body: JSON.stringify({ text: text })
+                });
+                const data = await res.json();
+                if (data.total_price && data.total_price > 0) {
+                    targetInput.value = data.total_price;
+                }
+            } catch (e) {
+                console.error("AI Error:", e);
+            } finally {
+                targetInput.placeholder = "Total Price (Rp)";
+            }
+        }
+
+        async function handleAutoPriceWithAI(reqId) {
+            const nameInput = document.getElementById(`offer-name-${reqId}`);
+            const priceInput = document.getElementById(`offer-price-${reqId}`);
+            const text = nameInput.value;
+
+            // Visual feedback so the seller knows AI is working
+            priceInput.placeholder = "Calculating... ✨";
+
+            try {
+                const res = await fetch(`api.php?action=ask_ai`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const data = await res.json();
+
+                if (data.total_price && data.total_price > 0) {
+                    priceInput.value = data.total_price;
+                    // Brief highlight effect
+                    priceInput.style.backgroundColor = "#e8f5e9"; // Light green
+                    setTimeout(() => priceInput.style.backgroundColor = "", 1000);
+                }
+            } catch (e) {
+                console.error("AI Error:", e);
+            }
+        }
+
+        // --- UPDATED: MAIN HANDLER ---
+        window.handleAutoPrice = function(reqId) {
+            const nameInput = document.getElementById(`offer-name-${reqId}`).value;
+            const priceInput = document.getElementById(`offer-price-${reqId}`);
+            
+            // 1. First, try the fast Regex (for 2x10k etc.)
+            const calculation = autoCalculateTotal(nameInput);
+            
+            if (calculation.totalPrice > 0) {
+                priceInput.value = calculation.totalPrice;
+            } else if (nameInput.length > 10) { 
+                // 2. If Regex fails and text is long enough, use AI
+                // Use a "Debounce" so we don't call the AI on every single keystroke
+                clearTimeout(window.aiTimeout);
+                window.aiTimeout = setTimeout(() => {
+                    handleAutoPriceWithAI(reqId);
+                }, 1200); // Waits 1.2 seconds after you stop typing
+            }
         }
 
         function openOrderModal() {
@@ -125,13 +213,13 @@
 
         // 1. Send Request (Buyer)
         async function sendRequest(text) {
-            addMessage(text, 'user');
-            addMessage("Waiting for sellers to offer their best price... ⏳", 'bot');
+           addMessage(text, 'user');
+            const calculation = autoCalculateTotal(text);
+            const calculatedQty = calculation.totalQty || 1; 
+
+            addMessage(`Requesting ${calculatedQty} items. Waiting for sellers... ⏳`, 'bot');
             
-            const buyerName =
-                localStorage.getItem('buyer_name')
-                || document.getElementById('buyer-name')?.value
-                || "Anonymous";
+            const buyerName = localStorage.getItem('buyer_name') || "Anonymous";
             
             if (USE_PHP_BACKEND) {
                 try {
@@ -139,12 +227,14 @@
                     formData.append('action', 'create_request');
                     formData.append('description', text);
                     formData.append('buyer_name', buyerName); 
+                    formData.append('quantity', calculatedQty); // 🔥 Send the auto-summed qty
 
                     const res = await fetch(API_URL, { method: 'POST', body: formData });
                     const data = await res.json();
                     currentRequestId = data.request_id;
                     startPollingOffers();
                 } catch(e) { console.error(e); }
+                
             } else {
                 // Mock Backend: Store request in "Cloud" (LocalStorage)
                 currentRequestId = Date.now();
@@ -439,13 +529,19 @@
                 const nameInput = document.getElementById(`offer-name-${reqId}`).value;
                 const priceInput = document.getElementById(`offer-price-${reqId}`);
                 
-                const calculatedTotal = autoCalculateTotal(nameInput);
+                // Coba hitung pakai rumus matematika sederhana (Regex) dulu
+                const total = autoCalculateTotal(nameInput);
                 
-                // Hanya update jika ada angka yang ditemukan
-                if (calculatedTotal > 0) {
-                    priceInput.value = calculatedTotal;
-                    // Beri efek highlight sedikit agar seller sadar harganya berubah
-                    priceInput.classList.add('ring-2', 'ring-orange-500');
+                if (total > 0) {
+                    // JIKA BERHASIL: Langsung isi kotak harga
+                    priceInput.value = total;
+                    priceInput.style.backgroundColor = "#fff7ed"; // Beri warna orange muda sebagai tanda sukses
+                } else if (nameInput.length > 10) {
+                    // JIKA RUMIT: Tanya AI Gemini (dengan jeda 1 detik agar tidak boros kuota)
+                    clearTimeout(window.aiTimer);
+                    window.aiTimer = setTimeout(() => {
+                        fetchAIPrice(nameInput, priceInput);
+                    }, 1000);
                 }
             }
         }
