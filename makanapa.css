@@ -117,3 +117,35 @@ body.modal-open {
     overflow: hidden;
 }
 
+/* Base Animation */
+@keyframes gradientBG {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* BUYER: ORANGE THEME */
+.buyer-theme {
+    background: linear-gradient(-45deg, #f7e2c9, #f7d7ad, #f4bf82, #f1a164);
+    background-size: 400% 400%;
+    animation: gradientBG 15s ease infinite;
+}
+
+/* SELLER: BLUE THEME */
+.seller-theme {
+    background: linear-gradient(-45deg, #e5edf2, #bbdbf1, #81cef7, #66caf8);
+    background-size: 400% 400%;
+    animation: gradientBG 15s ease infinite;
+}
+
+/* GLASS EFFECT */
+.glass-card {
+    background: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* Pastikan list chat transparan agar background terlihat */
+#chat-area, #seller-requests {
+    background: transparent !important;
+}

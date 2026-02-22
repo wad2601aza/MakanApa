@@ -213,7 +213,6 @@
 
         // 1. Send Request (Buyer)
         async function sendRequest(text) {
-           addMessage(text, 'user');
             const calculation = autoCalculateTotal(text);
             const calculatedQty = calculation.totalQty || 1; 
 
@@ -593,11 +592,27 @@
 
         // --- UTILS ---
 
-        function addMessage(text, type) {
-            const div = document.createElement('div');
-            div.className = `${type === 'user' ? 'user-msg' : 'bot-msg'} message-bubble`;
-            div.innerText = text;
-            chatArea.appendChild(div);
+        function addMessage(text, sender) {
+            const chatArea = document.getElementById('chat-area');
+            if (!chatArea) return;
+
+            const msgDiv = document.createElement('div');
+            // Styling bubble chat
+            msgDiv.className = sender === "bot" ? "flex justify-start mb-4" : "flex justify-end mb-4";
+
+            const bubbleClass = sender === "bot" 
+                ? "bg-orange-100 text-orange-800 rounded-tl-none border-orange-200" 
+                : "bg-orange-600 text-white rounded-tr-none border-transparent";
+
+            msgDiv.innerHTML = `
+                <div class="${bubbleClass} p-4 rounded-2xl shadow-sm max-w-[80%] border">
+                    <p class="text-sm font-medium">${text}</p>
+                </div>
+            `;
+
+            chatArea.appendChild(msgDiv);
+            
+            // Auto scroll ke bawah
             chatArea.scrollTop = chatArea.scrollHeight;
         }
 
@@ -797,39 +812,39 @@
             }
         }
 
-        // Init
-        roleBtn.onclick = () => {
+        //INit
+        if (typeof roleBtn !== 'undefined' && roleBtn) {
+            roleBtn.onclick = () => {
+                if (currentRole === 'buyer') {
 
-            if (currentRole === 'buyer') {
+                    currentRole = 'seller';
 
-                currentRole = 'seller';
+                    buyerView.classList.add('hidden');
+                    sellerView.classList.remove('hidden');
 
-                buyerView.classList.add('hidden');
-                sellerView.classList.remove('hidden');
+                    roleBtn.innerText = "Switch to Buyer";
 
-                roleBtn.innerText = "Switch to Buyer";
+                    // 🔥 Hide buyer-only UI
+                    if (historyBtn) historyBtn.classList.add('hidden');
+                    if (balanceCard) balanceCard.classList.add('hidden');
 
-                // 🔥 Hide buyer-only UI
-                if (historyBtn) historyBtn.classList.add('hidden');
-                if (balanceCard) balanceCard.classList.add('hidden');
+                    loadSellerRequests();
 
-                loadSellerRequests();
+                } else {
 
-            } else {
+                    currentRole = 'buyer';
 
-                currentRole = 'buyer';
+                    sellerView.classList.add('hidden');
+                    buyerView.classList.remove('hidden');
 
-                sellerView.classList.add('hidden');
-                buyerView.classList.remove('hidden');
+                    roleBtn.innerText = "Switch to Seller";
 
-                roleBtn.innerText = "Switch to Seller";
-
-                // 🔥 Show buyer-only UI
-                if (historyBtn) historyBtn.classList.remove('hidden');
-                if (balanceCard) balanceCard.classList.remove('hidden');
+                    // 🔥 Show buyer-only UI
+                    if (historyBtn) historyBtn.classList.remove('hidden');
+                    if (balanceCard) balanceCard.classList.remove('hidden');
+                }
             }
         };
-        
 
         // ============================
         // TOP UP MODAL FUNCTIONS
@@ -853,15 +868,63 @@
         loadUserHabit();
         renderHabits();
 
-        document.getElementById('send-btn').onclick = () => {
-            const val = userInput.value;
-            if(val.trim()) { userInput.value = ''; sendRequest(val); }
-        }
-        userInput.onkeypress = (e) => { if(e.key === 'Enter') document.getElementById('send-btn').click(); }
-        
-        addMessage("Tell me what you're craving and watch sellers compete to give you the best offer!", "bot");
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- 1. BUYER INITIALIZATION ---
+            const userInputEl = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            const chatAreaEl = document.getElementById('chat-area');
 
+            // Only run if we are on the Buyer Page
+            if (userInputEl && sendBtn) {
+                let isProcessing = false;
 
+                const handleSend = (e) => {
+                    if (e) e.preventDefault();
+                    if (isProcessing) return;
+
+                    const val = userInputEl.value.trim();
+                    if (!val) return;
+
+                    isProcessing = true;
+                    userInputEl.value = '';
+
+                    addMessage(val, "user");
+
+                    if (typeof sendRequest === 'function') {
+                        sendRequest(val);
+                    }
+
+                    setTimeout(() => { isProcessing = false; }, 500);
+                };
+
+                sendBtn.onclick = handleSend;
+                userInputEl.onkeydown = (e) => {
+                    if (e.key === 'Enter') handleSend(e);
+                };
+
+                if (chatAreaEl && chatAreaEl.innerHTML.trim() === "") {
+                    setTimeout(() => {
+                        addMessage("Tell me what you're craving and watch sellers compete to give you the best offer!", "bot");
+                    }, 300);
+                }
+            }
+
+            // --- 2. SELLER INITIALIZATION ---
+            const sellerRequestsList = document.getElementById('seller-requests');
+            
+            // Only run if we are on the Seller Page
+            if (sellerRequestsList) {
+                console.log("Seller Dashboard Active: Starting request engine...");
+                
+                // Load immediately on page open
+                loadSellerRequests();
+
+                // Start polling: Check for new Buyer requests every 3 seconds
+                setInterval(() => {
+                    loadSellerRequests();
+                }, 3000);
+            }
+        });
 
         window.openHistoryModal = openHistoryModal;
         window.closeHistoryModal = closeHistoryModal;
