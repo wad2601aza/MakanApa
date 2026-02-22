@@ -398,7 +398,7 @@
                 return;
             }
 
-           requests.forEach(req => {
+            requests.forEach(req => {
                 const card = document.createElement('div');
                 card.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-2';
                 card.innerHTML = `
